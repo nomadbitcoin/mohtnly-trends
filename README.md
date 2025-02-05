@@ -16,7 +16,7 @@ This tool fetches and stores social media metrics for influencers from various p
 
 Required environment variables:
 
-- `SOCIALBLADE_API_KEY`: Your SocialBlade API key
+- `SOCIALBLADE_TOKEN`: Your SocialBlade API key
 - `BIGQUERY_PROJECT_ID`: Your Google Cloud project ID
 - `BIGQUERY_DATASET`: BigQuery dataset name
 - `DEV_MODE`: Set to 'true' for development (saves to CSV) or 'false' for production

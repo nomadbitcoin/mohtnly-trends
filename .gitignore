@@ -60,3 +60,7 @@ coverage.xml
 Thumbs.db 
 
 monthly-trends-env/
+
+# Google Cloud credentials
+credentials.json
+*credentials*.json
