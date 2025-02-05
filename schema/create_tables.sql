@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS `{project_id}.{dataset}.influencers` (
-    id STRING,
-    name STRING,
+    id STRING NOT NULL,
+    name STRING NOT NULL,
     twitter_handle STRING,
     instagram_handle STRING,
     youtube_handle STRING,
@@ -11,40 +11,52 @@ CREATE TABLE IF NOT EXISTS `{project_id}.{dataset}.influencers` (
     last_youtube_updated TIMESTAMP,
     last_tiktok_updated TIMESTAMP,
     last_facebook_updated TIMESTAMP,
-    active BOOLEAN,
-    created_at TIMESTAMP,
-    updated_at TIMESTAMP
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS `{project_id}.{dataset}.twitter_metrics` (
-    id STRING,
-    influencer_id STRING,
-    followers INT64,
-    following INT64,
-    tweets INT64,
-    engagement_rate FLOAT64,
-    timestamp TIMESTAMP,
-    created_at TIMESTAMP
+    id STRING NOT NULL,
+    influencer_id STRING NOT NULL,
+    followers INT64 DEFAULT 0,
+    following INT64 DEFAULT 0,
+    tweets INT64 DEFAULT 0,
+    engagement_rate FLOAT64 DEFAULT 0.0,
+    timestamp TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS `{project_id}.{dataset}.youtube_metrics` (
-    id STRING,
-    influencer_id STRING,
-    subscribers INT64,
-    total_views INT64,
-    videos INT64,
-    engagement_rate FLOAT64,
-    timestamp TIMESTAMP,
-    created_at TIMESTAMP
+    id STRING NOT NULL,
+    influencer_id STRING NOT NULL,
+    subscribers INT64 DEFAULT 0,
+    total_views INT64 DEFAULT 0,
+    videos INT64 DEFAULT 0,
+    engagement_rate FLOAT64 DEFAULT 0.0,
+    timestamp TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS `{project_id}.{dataset}.instagram_metrics` (
-    id STRING,
-    influencer_id STRING,
-    followers INT64,
-    following INT64,
-    posts INT64,
-    engagement_rate FLOAT64,
-    timestamp TIMESTAMP,
-    created_at TIMESTAMP
+    id STRING NOT NULL,
+    influencer_id STRING NOT NULL,
+    followers INT64 DEFAULT 0,
+    following INT64 DEFAULT 0,
+    posts INT64 DEFAULT 0,
+    engagement_rate FLOAT64 DEFAULT 0.0,
+    timestamp TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS `{project_id}.{dataset}.tiktok_metrics` (
+    id STRING NOT NULL,
+    influencer_id STRING NOT NULL,
+    followers INT64 DEFAULT 0,
+    following INT64 DEFAULT 0,
+    likes INT64 DEFAULT 0,
+    videos INT64 DEFAULT 0,
+    engagement_rate FLOAT64 DEFAULT 0.0,
+    timestamp TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL
 ); 

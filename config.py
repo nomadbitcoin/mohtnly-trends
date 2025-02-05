@@ -4,14 +4,35 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    SOCIALBLADE_API_KEY = os.getenv('SOCIALBLADE_API_KEY')
+    # SocialBlade credentials
+    SOCIALBLADE_CLIENT_ID = os.getenv('SOCIALBLADE_CLIENT_ID')
+    SOCIALBLADE_TOKEN = os.getenv('SOCIALBLADE_TOKEN')
+    
+    # Google Cloud settings
     BIGQUERY_PROJECT_ID = os.getenv('BIGQUERY_PROJECT_ID')
     BIGQUERY_DATASET = os.getenv('BIGQUERY_DATASET')
-    DEV_MODE = os.getenv('DEV_MODE', 'false').lower() == 'true'
+    GOOGLE_CREDENTIALS_PATH = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
     
-    @staticmethod
-    def validate():
-        if not Config.SOCIALBLADE_API_KEY:
-            raise ValueError("SOCIALBLADE_API_KEY must be set")
-        if not Config.BIGQUERY_PROJECT_ID or not Config.BIGQUERY_DATASET:
-            raise ValueError("BIGQUERY_PROJECT_ID and BIGQUERY_DATASET must be set when not in dev mode") 
+    # Application settings
+    DEV_MODE = os.getenv('DEV_MODE', 'false').lower() == 'true'
+
+    @classmethod
+    def validate(cls):
+        """Validate required configuration"""
+        required_vars = [
+            'SOCIALBLADE_CLIENT_ID',
+            'SOCIALBLADE_TOKEN',
+            'BIGQUERY_PROJECT_ID',
+            'BIGQUERY_DATASET',
+            'GOOGLE_APPLICATION_CREDENTIALS'
+        ]
+        
+        missing = [var for var in required_vars if not getattr(cls, var.lower(), None)]
+        
+        if missing:
+            raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+        
+        if not cls.DEV_MODE and not os.path.exists(cls.GOOGLE_CREDENTIALS_PATH):
+            raise FileNotFoundError(
+                f"Google Cloud credentials file not found at: {cls.GOOGLE_CREDENTIALS_PATH}"
+            ) 
