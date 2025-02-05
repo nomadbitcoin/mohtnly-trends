@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 
 class TwitterFetcher:
     def __init__(self):
-        self.api_key = Config.SOCIALBLADE_API_KEY
+        self.client_id = Config.SOCIALBLADE_CLIENT_ID
+        self.token = Config.SOCIALBLADE_TOKEN
         self.base_url = "https://matrix.sbapis.com/b/twitter/statistics"
         self.logger = logging.getLogger(__name__)
 
@@ -36,9 +37,16 @@ class TwitterFetcher:
 
     def fetch_user(self, username: str) -> Dict:
         try:
+            headers = {
+                'query': username,
+                'history': 'default',
+                'clientid': self.client_id,
+                'token': self.token
+            }
+            
             response = requests.get(
-                f"{self.base_url}/{username}",
-                headers={"Authorization": f"Bearer {self.api_key}"},
+                self.base_url,
+                headers=headers,
                 timeout=10
             )
             
@@ -66,12 +74,16 @@ class TwitterFetcher:
     def fetch_user_history(self, user: Dict) -> List[Dict]:
         """Fetch one year of historical data for a user"""
         try:
+            headers = {
+                'query': user['handle'],
+                'history': 'extended',
+                'clientid': self.client_id,
+                'token': self.token
+            }
+            
             response = requests.get(
-                f"{self.base_url}/{user['handle']}",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}"
-                },
-                params={"history": "extended"},
+                self.base_url,
+                headers=headers,
                 timeout=10
             )
             

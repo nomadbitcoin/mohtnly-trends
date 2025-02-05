@@ -4,21 +4,14 @@ from config import Config
 import logging
 from datetime import datetime, timedelta
 
-class YoutubeFetcher:
+class TiktokFetcher:
     def __init__(self):
         self.client_id = Config.SOCIALBLADE_CLIENT_ID
         self.token = Config.SOCIALBLADE_TOKEN
-        self.base_url = "https://matrix.sbapis.com/b/youtube/statistics"
+        self.base_url = "https://matrix.sbapis.com/b/tiktok/statistics"
         self.logger = logging.getLogger(__name__)
 
     def fetch_all(self, users: List[Dict], last_updates: Dict[str, datetime]) -> List[Dict]:
-        """
-        Fetch data for users that haven't been updated in the last 30 days
-        
-        Args:
-            users: List of user dictionaries with 'id' and 'handle'
-            last_updates: Dictionary mapping user_id to their last update datetime
-        """
         results = []
         for user in users:
             try:
@@ -32,13 +25,13 @@ class YoutubeFetcher:
                     data['influencer_id'] = user['id']
                     results.append(data)
             except Exception as e:
-                self.logger.error(f"Error fetching data for YouTube user {user['handle']}: {str(e)}")
+                self.logger.error(f"Error fetching data for TikTok user {user['handle']}: {str(e)}")
         return results
 
-    def fetch_user(self, channel_id: str) -> Dict:
+    def fetch_user(self, username: str) -> Dict:
         try:
             headers = {
-                'query': channel_id,
+                'query': username,
                 'history': 'default',
                 'clientid': self.client_id,
                 'token': self.token
@@ -54,25 +47,25 @@ class YoutubeFetcher:
             data = response.json()
             
             return {
-                'channel_id': channel_id,
-                'subscribers': data.get('subscribers'),
-                'total_views': data.get('views'),
+                'username': username,
+                'followers': data.get('followers'),
+                'following': data.get('following'),
+                'likes': data.get('likes'),
                 'videos': data.get('videos'),
                 'engagement_rate': data.get('engagement_rate'),
                 'timestamp': data.get('timestamp')
             }
         except requests.exceptions.Timeout:
-            self.logger.error(f"Timeout while fetching data for {channel_id}")
+            self.logger.error(f"Timeout while fetching data for {username}")
             raise
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"Request failed for {channel_id}: {str(e)}")
+            self.logger.error(f"Request failed for {username}: {str(e)}")
             raise
         except ValueError as e:
-            self.logger.error(f"Invalid JSON response for {channel_id}: {str(e)}")
+            self.logger.error(f"Invalid JSON response for {username}: {str(e)}")
             raise
 
     def fetch_user_history(self, user: Dict) -> List[Dict]:
-        """Fetch one year of historical data for a user"""
         try:
             headers = {
                 'query': user['handle'],
@@ -94,9 +87,10 @@ class YoutubeFetcher:
             for history_point in data.get('history', []):
                 metric = {
                     'influencer_id': user['id'],
-                    'channel_id': user['handle'],
-                    'subscribers': history_point.get('subscribers'),
-                    'total_views': history_point.get('views'),
+                    'username': user['handle'],
+                    'followers': history_point.get('followers'),
+                    'following': history_point.get('following'),
+                    'likes': history_point.get('likes'),
                     'videos': history_point.get('videos'),
                     'engagement_rate': history_point.get('engagement_rate'),
                     'timestamp': history_point.get('timestamp')
