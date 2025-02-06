@@ -209,6 +209,46 @@ class DatabaseManager:
             self.logger.error(f"Error saving CSV for {platform}: {str(e)}")
             raise
 
+    def check_existing_handles(self, handles: Dict[str, str]) -> List[str]:
+        """
+        Check if any handles already exist in the database
+        Returns list of platforms where duplicates were found
+        """
+        try:
+            if Config.DEV_MODE:
+                return []
+
+            duplicates = []
+            for platform_handle, handle in handles.items():
+                if not handle:
+                    continue
+                    
+                query = f"""
+                    SELECT COUNT(*) as count
+                    FROM `{self.project_id}.{self.dataset_id}.influencers`
+                    WHERE {platform_handle} = @handle
+                    AND active = TRUE
+                """
+                
+                job_config = bigquery.QueryJobConfig(
+                    query_parameters=[
+                        bigquery.ScalarQueryParameter("handle", "STRING", handle)
+                    ]
+                )
+                
+                query_job = self.client.query(query, job_config=job_config)
+                result = next(query_job.result())
+                
+                if result.count > 0:
+                    platform = platform_handle.replace('_handle', '')
+                    duplicates.append(f"{platform} ({handle})")
+                    
+            return duplicates
+            
+        except Exception as e:
+            self.logger.error(f"Error checking existing handles: {str(e)}")
+            raise
+
     def add_influencer(self, influencer_data: Dict):
         """Add a new influencer to the database"""
         try:
@@ -216,29 +256,56 @@ class DatabaseManager:
                 self._save_to_csv('influencers', [influencer_data])
                 return
 
-            # Ensure required fields
-            required_fields = {
-                'id': str(uuid.uuid4()) if 'id' not in influencer_data else influencer_data['id'],
-                'name': influencer_data['name'],
-                'active': True if 'active' not in influencer_data else influencer_data['active'],
-                'created_at': datetime.utcnow(),
-                'updated_at': datetime.utcnow()
-            }
+            # Check for duplicate handles
+            handles = {k: v for k, v in influencer_data.items() if k.endswith('_handle')}
+            query_parts = []
+            params = []
             
-            # Merge with optional handle fields and ensure NULL for missing platforms
-            platforms = ['twitter', 'youtube', 'instagram', 'tiktok', 'facebook']
-            handle_fields = {}
-            for platform in platforms:
-                handle_key = f"{platform}_handle"
-                last_updated_key = f"last_{platform}_updated"
-                handle_fields[handle_key] = influencer_data.get(handle_key)
-                handle_fields[last_updated_key] = None  # Initialize all last_updated fields as NULL
+            for platform_handle, handle in handles.items():
+                if not handle:
+                    continue
+                    
+                query_parts.append(f"""
+                    SELECT DISTINCT id, '{platform_handle.replace('_handle', '')}' as platform
+                    FROM `{self.project_id}.{self.dataset_id}.influencers`
+                    WHERE {platform_handle} = @{platform_handle}
+                    AND active = TRUE
+                """)
+                params.append(
+                    bigquery.ScalarQueryParameter(platform_handle, "STRING", handle)
+                )
             
-            influencer_data = {
-                **required_fields,
-                **handle_fields
-            }
+            if query_parts:
+                query = " UNION ALL ".join(query_parts)
+                
+                job_config = bigquery.QueryJobConfig(
+                    query_parameters=params
+                )
+                
+                query_job = self.client.query(query, job_config=job_config)
+                results = query_job.result()
+                
+                # Group duplicates by user_id to check if they belong to different users
+                duplicates_by_user = {}
+                for row in results:
+                    duplicates_by_user.setdefault(row.id, []).append(row.platform)
+                
+                # Filter out the current user's duplicates
+                other_users_duplicates = {
+                    user_id: platforms 
+                    for user_id, platforms in duplicates_by_user.items()
+                    if user_id != influencer_data.get('id')
+                }
+                
+                if other_users_duplicates:
+                    duplicate_details = []
+                    for platforms in other_users_duplicates.values():
+                        for platform in platforms:
+                            handle = handles[f"{platform}_handle"]
+                            duplicate_details.append(f"{platform} ({handle})")
+                    raise ValueError(f"Handle(s) already exist in other accounts: {', '.join(duplicate_details)}")
 
+            # Insert the new influencer
             table_id = f"{self.project_id}.{self.dataset_id}.influencers"
             df = pd.DataFrame([influencer_data])
             
@@ -323,12 +390,9 @@ class DatabaseManager:
             )
             
             query_job = self.client.query(query, job_config=job_config)
-            result = query_job.result()
+            query_job.result()
             
-            if result.num_rows_modified > 0:
-                self.logger.info(f"Updated last_{platform}_updated for influencer {influencer_id}")
-            else:
-                self.logger.warning(f"No update performed for {platform} - handle might not exist for influencer {influencer_id}")
+            self.logger.info(f"Updated last_{platform}_updated for influencer {influencer_id}")
             
         except Exception as e:
             self.logger.error(f"Error updating last_{platform}_updated: {str(e)}")
@@ -364,3 +428,84 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"Error fetching last_{platform}_updated: {str(e)}")
             return None 
+
+    def update_influencer_handles(self, influencer_id: str, updates: Dict[str, str]):
+        """Update social media handles for an influencer"""
+        try:
+            if Config.DEV_MODE:
+                return
+
+            # Check for duplicate handles in other accounts
+            query_parts = []
+            params = []
+            
+            for platform_handle, handle in updates.items():
+                if not handle:
+                    continue
+                    
+                query_parts.append(f"""
+                    SELECT DISTINCT id, '{platform_handle.replace('_handle', '')}' as platform
+                    FROM `{self.project_id}.{self.dataset_id}.influencers`
+                    WHERE {platform_handle} = @{platform_handle}
+                    AND id != @influencer_id
+                    AND active = TRUE
+                """)
+                params.append(
+                    bigquery.ScalarQueryParameter(platform_handle, "STRING", handle)
+                )
+            
+            if query_parts:
+                query = " UNION ALL ".join(query_parts)
+                
+                job_config = bigquery.QueryJobConfig(
+                    query_parameters=[
+                        *params,
+                        bigquery.ScalarQueryParameter("influencer_id", "STRING", influencer_id)
+                    ]
+                )
+                
+                query_job = self.client.query(query, job_config=job_config)
+                results = query_job.result()
+                
+                # Group duplicates by user_id
+                duplicates_by_user = {}
+                for row in results:
+                    duplicates_by_user.setdefault(row.id, []).append(row.platform)
+                
+                if duplicates_by_user:
+                    duplicate_details = []
+                    for platforms in duplicates_by_user.values():
+                        for platform in platforms:
+                            handle = updates[f"{platform}_handle"]
+                            duplicate_details.append(f"{platform} ({handle})")
+                    raise ValueError(f"Handle(s) already exist in other accounts: {', '.join(duplicate_details)}")
+
+            # Build SET clause
+            set_clause = ", ".join([
+                f"{handle_key} = @{handle_key}"
+                for handle_key in updates.keys()
+            ])
+            
+            query = f"""
+                UPDATE `{self.project_id}.{self.dataset_id}.influencers`
+                SET {set_clause},
+                    updated_at = @updated_at
+                WHERE id = @influencer_id
+            """
+            
+            job_config = bigquery.QueryJobConfig(
+                query_parameters=[
+                    *params,
+                    bigquery.ScalarQueryParameter("updated_at", "TIMESTAMP", datetime.utcnow()),
+                    bigquery.ScalarQueryParameter("influencer_id", "STRING", influencer_id)
+                ]
+            )
+            
+            query_job = self.client.query(query, job_config=job_config)
+            query_job.result()
+            
+            self.logger.info(f"Successfully updated handles for influencer {influencer_id}")
+            
+        except Exception as e:
+            self.logger.error(f"Error updating influencer handles: {str(e)}")
+            raise 

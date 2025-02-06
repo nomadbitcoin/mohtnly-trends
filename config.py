@@ -24,10 +24,10 @@ class Config:
             'SOCIALBLADE_TOKEN',
             'BIGQUERY_PROJECT_ID',
             'BIGQUERY_DATASET',
-            'GOOGLE_APPLICATION_CREDENTIALS'
+            'GOOGLE_CREDENTIALS_PATH'
         ]
         
-        missing = [var for var in required_vars if not getattr(cls, var.lower(), None)]
+        missing = [var for var in required_vars if not getattr(cls, var, None)]
         
         if missing:
             raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
