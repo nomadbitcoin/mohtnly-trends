@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS `{project_id}.{dataset}.influencers` (
     last_youtube_updated TIMESTAMP,
     last_tiktok_updated TIMESTAMP,
     last_facebook_updated TIMESTAMP,
-    active BOOLEAN NOT NULL DEFAULT TRUE,
+    active BOOL DEFAULT TRUE NOT NULL,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL
 );
@@ -19,10 +19,11 @@ CREATE TABLE IF NOT EXISTS `{project_id}.{dataset}.influencers` (
 CREATE TABLE IF NOT EXISTS `{project_id}.{dataset}.twitter_metrics` (
     id STRING NOT NULL,
     influencer_id STRING NOT NULL,
-    followers INT64 DEFAULT 0,
-    following INT64 DEFAULT 0,
-    tweets INT64 DEFAULT 0,
-    engagement_rate FLOAT64 DEFAULT 0.0,
+    influencer_handle STRING NOT NULL,
+    followers INT64,
+    `following` INT64,
+    tweets INT64,
+    favorites INT64,
     timestamp TIMESTAMP NOT NULL,
     created_at TIMESTAMP NOT NULL
 );
@@ -42,20 +43,8 @@ CREATE TABLE IF NOT EXISTS `{project_id}.{dataset}.instagram_metrics` (
     id STRING NOT NULL,
     influencer_id STRING NOT NULL,
     followers INT64 DEFAULT 0,
-    following INT64 DEFAULT 0,
+    `following` INT64 DEFAULT 0,
     posts INT64 DEFAULT 0,
-    engagement_rate FLOAT64 DEFAULT 0.0,
-    timestamp TIMESTAMP NOT NULL,
-    created_at TIMESTAMP NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS `{project_id}.{dataset}.tiktok_metrics` (
-    id STRING NOT NULL,
-    influencer_id STRING NOT NULL,
-    followers INT64 DEFAULT 0,
-    following INT64 DEFAULT 0,
-    likes INT64 DEFAULT 0,
-    videos INT64 DEFAULT 0,
     engagement_rate FLOAT64 DEFAULT 0.0,
     timestamp TIMESTAMP NOT NULL,
     created_at TIMESTAMP NOT NULL

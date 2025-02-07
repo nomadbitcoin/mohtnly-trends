@@ -1,4 +1,3 @@
-import argparse
 import logging
 from datetime import datetime
 import os
@@ -7,6 +6,10 @@ from config import Config
 import uuid
 import pandas as pd
 from utils import save_to_csv
+from fetchers.twitter_fetcher import TwitterFetcher
+from fetchers.youtube_fetcher import YoutubeFetcher
+from fetchers.instagram_fetcher import InstagramFetcher
+from fetchers.tiktok_fetcher import TiktokFetcher
 
 def setup_logging():
     logging.basicConfig(
@@ -83,12 +86,36 @@ def add_influencer():
     }
 
     try:
+        # First add the influencer to the database
         db.add_influencer(influencer_data)
         logger.info(f"Successfully added influencer: {name}")
+        
+        # Then fetch historical data for each platform
+        if handles.get('twitter_handle'):
+            try:
+                twitter_fetcher = TwitterFetcher()
+                twitter_fetcher.fetch_user_history({
+                    'id': influencer_data['id'],
+                    'handle': handles['twitter_handle']
+                })
+                logger.info(f"Successfully fetched Twitter history for {handles['twitter_handle']}")
+            except Exception as e:
+                logger.error(f"Error fetching Twitter history: {str(e)}")
+
+        # Add similar blocks for other platforms when implemented
+        # if handles.get('youtube_handle'):
+        #     from fetchers.youtube_fetcher import YoutubeFetcher
+        #     youtube_fetcher = YoutubeFetcher()
+        #     ...
+        # if handles.get('instagram_handle'):
+        #     from fetchers.instagram_fetcher import InstagramFetcher
+        #     instagram_fetcher = InstagramFetcher()
+        #     ...
+                
     except ValueError as e:
         logger.error(str(e))
     except Exception as e:
-        logger.error(f"Error adding influencer: {str(e)}")
+        logger.error(f"Error in add_influencer flow: {str(e)}")
 
 def edit_influencer():
     """Interactive CLI to edit an existing influencer"""
@@ -146,29 +173,90 @@ def edit_influencer():
     except Exception as e:
         logger.error(f"Error updating influencer: {str(e)}")
 
-def main():
-    parser = argparse.ArgumentParser(description='Social Media Influencer Data CLI')
-    parser.add_argument('--add_user', action='store_true', help='Add a new influencer')
-    parser.add_argument('--edit_user', action='store_true', help='Edit existing influencer')
-    parser.add_argument('--save_csv', action='store_true', help='Save API responses to CSV')
+def fetch_user_history():
+    """Interactive CLI to fetch history for a specific influencer"""
+    db = DatabaseManager()
+    logger = logging.getLogger(__name__)
     
-    args = parser.parse_args()
+    # List active influencers
+    influencers = db.get_active_influencers()
+    if not influencers:
+        logger.error("No active influencers found")
+        return
+        
+    print("\nAvailable influencers:")
+    for i, inf in enumerate(influencers, 1):
+        print(f"{i}. {inf['name']}")
     
-    logger = setup_logging()
+    # Select influencer
+    while True:
+        try:
+            choice = int(input("\nSelect influencer number: "))
+            if 1 <= choice <= len(influencers):
+                influencer = influencers[choice - 1]
+                break
+            print("Invalid choice")
+        except ValueError:
+            print("Please enter a number")
+    
+    # Show available platforms for the influencer
+    platforms = ['twitter', 'youtube', 'instagram', 'tiktok', 'facebook']
+    available_platforms = [p for p in platforms if p in influencer.get('handles', {})]
+    
+    if not available_platforms:
+        logger.error(f"No social media handles found for {influencer['name']}")
+        return
+    
+    print("\nAvailable platforms:")
+    for i, platform in enumerate(available_platforms, 1):
+        handle = influencer['handles'][platform]
+        print(f"{i}. {platform.title()} ({handle})")
+    
+    # Select platform
+    while True:
+        try:
+            choice = int(input("\nSelect platform number: "))
+            if 1 <= choice <= len(available_platforms):
+                selected_platform = available_platforms[choice - 1]
+                break
+            print("Invalid choice")
+        except ValueError:
+            print("Please enter a number")
     
     try:
-        Config.validate()
+        # Initialize appropriate fetcher
+        fetchers = {
+            'twitter': TwitterFetcher(),
+            'youtube': YoutubeFetcher(),
+            'instagram': InstagramFetcher(),
+            'tiktok': TiktokFetcher()
+        }
         
-        if args.add_user:
-            add_influencer()
-        elif args.edit_user:
-            edit_influencer()
-        else:
-            parser.print_help()
+        fetcher = fetchers.get(selected_platform)
+        if not fetcher:
+            logger.error(f"Fetcher not implemented for {selected_platform}")
+            return
             
+        # Prepare user data for fetcher
+        user_data = {
+            'id': influencer['id'],
+            'handle': influencer['handles'][selected_platform]
+        }
+        
+        # Fetch history using the appropriate fetcher
+        history = fetcher.fetch_user_history(user_data)
+        
+        if not history:
+            logger.info(f"No history found for {influencer['name']} on {selected_platform}")
+            return
+        
+        # Save to CSV
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"history_{selected_platform}_{user_data['handle']}_{timestamp}.csv"
+        
+        df = pd.DataFrame(history)
+        df.to_csv(filename, index=False)
+        logger.info(f"Successfully exported history to {filename}")
+        
     except Exception as e:
-        logger.error(f"Critical error in CLI execution: {str(e)}")
-        raise
-
-if __name__ == "__main__":
-    main() 
+        logger.error(f"Error fetching history: {str(e)}") 

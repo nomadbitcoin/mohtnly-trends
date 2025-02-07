@@ -3,8 +3,9 @@ from typing import List, Dict
 from config import Config
 import logging
 from datetime import datetime, timedelta
+from .base_fetcher import BaseFetcher
 
-class YoutubeFetcher:
+class YoutubeFetcher(BaseFetcher):
     def __init__(self):
         self.client_id = Config.SOCIALBLADE_CLIENT_ID
         self.token = Config.SOCIALBLADE_TOKEN
@@ -53,6 +54,9 @@ class YoutubeFetcher:
             response.raise_for_status()
             data = response.json()
             
+            # Save raw response
+            self._save_raw_response(data, 'youtube', channel_id)
+            
             return {
                 'channel_id': channel_id,
                 'subscribers': data.get('subscribers'),
@@ -89,6 +93,9 @@ class YoutubeFetcher:
             
             response.raise_for_status()
             data = response.json()
+            
+            # Save raw response
+            self._save_raw_response(data, 'youtube_history', user['handle'])
             
             metrics = []
             for history_point in data.get('history', []):

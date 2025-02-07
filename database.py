@@ -11,29 +11,27 @@ from google.oauth2 import service_account
 
 class DatabaseManager:
     def __init__(self):
-        if Config.DEV_MODE:
-            self.client = None
-        else:
-            try:
-                self.client = bigquery.Client(
-                    project=Config.BIGQUERY_PROJECT_ID,
-                    credentials=service_account.Credentials.from_service_account_file(
-                        Config.GOOGLE_CREDENTIALS_PATH
-                    )
-                )
-            except Exception as e:
-                self.logger.error(f"Failed to initialize BigQuery client: {str(e)}")
-                raise
-            
         self.project_id = Config.BIGQUERY_PROJECT_ID
         self.dataset_id = Config.BIGQUERY_DATASET
         self.logger = logging.getLogger(__name__)
+        
+        try:
+            self.client = bigquery.Client(
+                project=Config.BIGQUERY_PROJECT_ID,
+                credentials=service_account.Credentials.from_service_account_file(
+                    Config.GOOGLE_CREDENTIALS_PATH
+                )
+            )
+            # Initialize tables after client and logger are set up
+            init_database(self.client)
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize BigQuery client: {str(e)}")
+            raise
 
     def get_active_influencers(self) -> List[Dict]:
         """Fetch all active influencers from BigQuery"""
         try:
-            if Config.DEV_MODE:
-                return self._get_dev_influencers()
 
             query = f"""
                 SELECT 
@@ -81,11 +79,11 @@ class DatabaseManager:
                 self.logger.warning(f"No data to save for platform: {platform}")
                 return
 
+            # In dev_mode, also save to CSV but continue with normal operation
             if Config.DEV_MODE:
                 self._save_to_csv(platform, data)
-                return
 
-            # Transform data to match platform-specific metrics schema
+            # Normal BigQuery save
             metrics_data = []
             table_id = f"{self.project_id}.{self.dataset_id}.{platform}_metrics"
             
@@ -100,10 +98,11 @@ class DatabaseManager:
                 # Add platform-specific fields with proper NULL handling
                 if platform == 'twitter':
                     metric.update({
-                        'followers': item.get('followers', 0),
-                        'following': item.get('following', 0),
-                        'tweets': item.get('tweets', 0),
-                        'engagement_rate': item.get('engagement_rate', 0.0)
+                        'influencer_handle': item.get('username'),
+                        'followers': item.get('followers'),
+                        'following': item.get('following'),
+                        'tweets': item.get('tweets'),
+                        'favorites': item.get('favorites')
                     })
                 elif platform == 'youtube':
                     metric.update({
@@ -139,14 +138,6 @@ class DatabaseManager:
 
             load_table()
             
-            # Update last platform update timestamp
-            for item in data:
-                self.update_last_platform_update(
-                    platform, 
-                    item['influencer_id'], 
-                    item.get('timestamp') or datetime.utcnow()
-                )
-                
             self.logger.info(f"Successfully saved {len(data)} records for {platform}")
 
         except Exception as e:
@@ -158,16 +149,17 @@ class DatabaseManager:
         base_schema = [
             bigquery.SchemaField("id", "STRING", mode="REQUIRED"),
             bigquery.SchemaField("influencer_id", "STRING", mode="REQUIRED"),
-            bigquery.SchemaField("engagement_rate", "FLOAT", mode="NULLABLE"),
             bigquery.SchemaField("timestamp", "TIMESTAMP", mode="REQUIRED"),
             bigquery.SchemaField("created_at", "TIMESTAMP", mode="REQUIRED"),
         ]
         
         if platform == 'twitter':
             base_schema.extend([
+                bigquery.SchemaField("influencer_handle", "STRING", mode="REQUIRED"),
                 bigquery.SchemaField("followers", "INTEGER", mode="NULLABLE"),
                 bigquery.SchemaField("following", "INTEGER", mode="NULLABLE"),
                 bigquery.SchemaField("tweets", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("favorites", "INTEGER", mode="NULLABLE"),
             ])
         elif platform == 'youtube':
             base_schema.extend([
@@ -183,20 +175,6 @@ class DatabaseManager:
             ])
         
         return base_schema
-
-    def _get_dev_influencers(self) -> List[Dict]:
-        """Return sample influencers for development mode"""
-        return [
-            {
-                'id': '1',
-                'name': 'Sample Influencer 1',
-                'handles': {
-                    'twitter': 'elonmusk',
-                    'youtube': 'MrBeast',
-                    'instagram': 'cristiano'
-                }
-            }
-        ]
 
     def _save_to_csv(self, platform: str, data: List[Dict]):
         try:
@@ -215,9 +193,6 @@ class DatabaseManager:
         Returns list of platforms where duplicates were found
         """
         try:
-            if Config.DEV_MODE:
-                return []
-
             duplicates = []
             for platform_handle, handle in handles.items():
                 if not handle:
@@ -254,10 +229,28 @@ class DatabaseManager:
         try:
             if Config.DEV_MODE:
                 self._save_to_csv('influencers', [influencer_data])
-                return
+
+            # Ensure all required fields are present with default values
+            complete_data = {
+                'id': influencer_data['id'],
+                'name': influencer_data['name'],
+                'twitter_handle': influencer_data.get('twitter_handle'),
+                'instagram_handle': influencer_data.get('instagram_handle'),
+                'youtube_handle': influencer_data.get('youtube_handle'),
+                'tiktok_handle': influencer_data.get('tiktok_handle'),
+                'facebook_handle': influencer_data.get('facebook_handle'),
+                'last_twitter_updated': None,
+                'last_instagram_updated': None,
+                'last_youtube_updated': None,
+                'last_tiktok_updated': None,
+                'last_facebook_updated': None,
+                'active': influencer_data.get('active', True),
+                'created_at': influencer_data.get('created_at', datetime.utcnow()),
+                'updated_at': influencer_data.get('updated_at', datetime.utcnow())
+            }
 
             # Check for duplicate handles
-            handles = {k: v for k, v in influencer_data.items() if k.endswith('_handle')}
+            handles = {k: v for k, v in complete_data.items() if k.endswith('_handle')}
             query_parts = []
             params = []
             
@@ -307,7 +300,7 @@ class DatabaseManager:
 
             # Insert the new influencer
             table_id = f"{self.project_id}.{self.dataset_id}.influencers"
-            df = pd.DataFrame([influencer_data])
+            df = pd.DataFrame([complete_data])
             
             job_config = bigquery.LoadJobConfig(
                 write_disposition="WRITE_APPEND",
@@ -344,8 +337,6 @@ class DatabaseManager:
     def get_last_update_date(self, influencer_id: str) -> Optional[datetime]:
         """Get the last update date for an influencer"""
         try:
-            if Config.DEV_MODE:
-                return None
 
             query = f"""
                 SELECT MAX(timestamp) as last_update
@@ -371,8 +362,6 @@ class DatabaseManager:
     def update_last_platform_update(self, platform: str, influencer_id: str, timestamp: datetime):
         """Update the last update timestamp for a specific platform"""
         try:
-            if Config.DEV_MODE:
-                return
 
             query = f"""
                 UPDATE `{self.project_id}.{self.dataset_id}.influencers`
@@ -401,8 +390,6 @@ class DatabaseManager:
     def get_platform_last_update(self, platform: str, influencer_id: str) -> Optional[datetime]:
         """Get the last update date for a specific platform"""
         try:
-            if Config.DEV_MODE:
-                return None
 
             query = f"""
                 SELECT last_{platform}_updated
@@ -432,8 +419,6 @@ class DatabaseManager:
     def update_influencer_handles(self, influencer_id: str, updates: Dict[str, str]):
         """Update social media handles for an influencer"""
         try:
-            if Config.DEV_MODE:
-                return
 
             # Check for duplicate handles in other accounts
             query_parts = []
@@ -509,3 +494,112 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"Error updating influencer handles: {str(e)}")
             raise 
+
+    def save_twitter_metrics(self, metrics: List[Dict]):
+        """
+        Save Twitter metrics to BigQuery
+        
+        Args:
+            metrics: List of Twitter metrics with fields:
+                - influencer_id: str
+                - username: str
+                - followers: int
+                - following: int
+                - tweets: int
+                - favorites: int
+                - timestamp: datetime
+        """
+        try:
+            if not metrics:
+                self.logger.warning("No Twitter metrics to save")
+                return
+
+            # In dev_mode, also save to CSV
+            if Config.DEV_MODE:
+                self._save_to_csv('twitter', metrics)
+
+            # Prepare data for BigQuery
+            metrics_data = []
+            for item in metrics:
+                metric = {
+                    'id': str(uuid.uuid4()),
+                    'influencer_id': item['influencer_id'],
+                    'influencer_handle': item['username'],
+                    'followers': item['followers'],
+                    'following': item['following'],
+                    'tweets': item['tweets'],
+                    'favorites': item['favorites'],
+                    'timestamp': item['timestamp'],
+                    'created_at': datetime.utcnow()
+                }
+                metrics_data.append(metric)
+
+            df = pd.DataFrame(metrics_data)
+            table_id = f"{self.project_id}.{self.dataset_id}.twitter_metrics"
+            
+            # Define schema
+            schema = [
+                bigquery.SchemaField("id", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("influencer_id", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("influencer_handle", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("followers", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("following", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("tweets", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("favorites", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("timestamp", "TIMESTAMP", mode="REQUIRED"),
+                bigquery.SchemaField("created_at", "TIMESTAMP", mode="REQUIRED"),
+            ]
+
+            job_config = bigquery.LoadJobConfig(
+                write_disposition="WRITE_APPEND",
+                schema=schema
+            )
+
+            @retry.Retry(predicate=retry.if_transient_error)
+            def load_table():
+                job = self.client.load_table_from_dataframe(
+                    df, table_id, job_config=job_config
+                )
+                return job.result()
+
+            load_table()
+            self.logger.info(f"Successfully saved {len(metrics)} Twitter metrics")
+
+        except Exception as e:
+            self.logger.error(f"Error saving Twitter metrics: {str(e)}")
+            raise
+
+def init_database(client):
+    logger = logging.getLogger(__name__)
+    try:
+        # Read the SQL script
+        with open('schema/create_tables.sql', 'r') as f:
+            sql_script = f.read()
+        
+        # Replace placeholders with Config values
+        sql_script = sql_script.format(
+            project_id=Config.BIGQUERY_PROJECT_ID,
+            dataset=Config.BIGQUERY_DATASET
+        )
+        
+        # Execute each statement separately
+        statements = [s.strip() for s in sql_script.split(';') if s.strip()]
+        for statement in statements:
+            try:
+                query_job = client.query(statement)
+                query_job.result()  # Wait for the query to complete
+            except Exception as e:
+                logger.error(f"Error executing statement: {statement}")
+                logger.error(f"Error details: {str(e)}")
+                raise
+                
+        logger.info("Database tables initialized successfully")
+        
+    except Exception as e:
+        logger.error(f"Error initializing database tables: {str(e)}")
+        raise
+
+def get_client():
+    client = bigquery.Client()
+    init_database(client)
+    return client 

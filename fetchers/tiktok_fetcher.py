@@ -3,8 +3,9 @@ from typing import List, Dict
 from config import Config
 import logging
 from datetime import datetime, timedelta
+from .base_fetcher import BaseFetcher
 
-class TiktokFetcher:
+class TiktokFetcher(BaseFetcher):
     def __init__(self):
         self.client_id = Config.SOCIALBLADE_CLIENT_ID
         self.token = Config.SOCIALBLADE_TOKEN
@@ -46,6 +47,9 @@ class TiktokFetcher:
             response.raise_for_status()
             data = response.json()
             
+            # Save raw response
+            self._save_raw_response(data, 'tiktok', username)
+            
             return {
                 'username': username,
                 'followers': data.get('followers'),
@@ -82,6 +86,9 @@ class TiktokFetcher:
             
             response.raise_for_status()
             data = response.json()
+            
+            # Save raw response
+            self._save_raw_response(data, 'tiktok_history', user['handle'])
             
             metrics = []
             for history_point in data.get('history', []):

@@ -7,26 +7,14 @@ from fetchers.twitter_fetcher import TwitterFetcher
 from fetchers.youtube_fetcher import YoutubeFetcher
 from fetchers.instagram_fetcher import InstagramFetcher
 from fetchers.tiktok_fetcher import TiktokFetcher
-import pandas as pd
-from datetime import datetime
-from cli import add_influencer, edit_influencer, save_to_csv
-
-def setup_logging():
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('app.log'),
-            logging.StreamHandler()
-        ]
-    )
-    return logging.getLogger(__name__)
+from cli import add_influencer, edit_influencer, fetch_user_history, setup_logging, save_to_csv
 
 def main():
     parser = argparse.ArgumentParser(description='Social Media Influencer Data Fetcher')
-    parser.add_argument('--dev_mode', action='store_true', help='Run in development mode')
+    parser.add_argument('--dev_mode', action='store_true', help='Save data to CSV in addition to BigQuery')
     parser.add_argument('--add_user', action='store_true', help='Add a new influencer')
     parser.add_argument('--edit_user', action='store_true', help='Edit existing influencer')
+    parser.add_argument('--fetch_history', action='store_true', help='Fetch history for a specific user')
     parser.add_argument('--save_csv', action='store_true', help='Save API responses to CSV')
     
     args = parser.parse_args()
@@ -45,6 +33,9 @@ def main():
             return
         elif args.edit_user:
             edit_influencer()
+            return
+        elif args.fetch_history:
+            fetch_user_history()
             return
         
         # Main data collection flow

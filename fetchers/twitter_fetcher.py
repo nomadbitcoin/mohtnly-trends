@@ -3,8 +3,11 @@ from typing import List, Dict
 from config import Config
 import logging
 from datetime import datetime, timedelta
+from .base_fetcher import BaseFetcher
+from database import DatabaseManager
+import json
 
-class TwitterFetcher:
+class TwitterFetcher(BaseFetcher):
     def __init__(self):
         self.client_id = Config.SOCIALBLADE_CLIENT_ID
         self.token = Config.SOCIALBLADE_TOKEN
@@ -20,6 +23,8 @@ class TwitterFetcher:
             last_updates: Dictionary mapping user_id to their last update datetime
         """
         results = []
+        db = DatabaseManager()
+        
         for user in users:
             try:
                 last_update = last_updates.get(user['id'])
@@ -27,19 +32,58 @@ class TwitterFetcher:
                     self.logger.info(f"Skipping {user['handle']} - last update was less than 30 days ago")
                     continue
 
-                data = self.fetch_user(user['handle'])
-                if data:
-                    data['influencer_id'] = user['id']
-                    results.append(data)
+                metrics = self.fetch_user(user['handle'])
+                if metrics:
+                    # Add influencer_id to each metric
+                    for metric in metrics:
+                        metric['influencer_id'] = user['id']
+                    results.extend(metrics)
+                    
+                    # Save metrics and update last update timestamp
+                    db.save_twitter_metrics(metrics)
+                    latest_timestamp = max(m['timestamp'] for m in metrics)
+                    db.update_last_platform_update('twitter', user['id'], latest_timestamp)
+                    
             except Exception as e:
                 self.logger.error(f"Error fetching data for Twitter user {user['handle']}: {str(e)}")
+            
         return results
 
-    def fetch_user(self, username: str) -> Dict:
+    def fetch_user(self, username: str) -> List[Dict]:
+        """Fetch recent metrics for a user with default history"""
+        return self._fetch_metrics(username, history_type='default')
+
+    def fetch_user_history(self, user: Dict) -> List[Dict]:
+        """Fetch extended historical data for a user"""
+        db = DatabaseManager()
+        metrics = self._fetch_metrics(user['handle'], history_type='extended')
+        
+        if metrics:
+            # Add influencer_id to each metric
+            for metric in metrics:
+                metric['influencer_id'] = user['id']
+                
+            # Save metrics and update last update timestamp
+            db.save_twitter_metrics(metrics)
+            latest_timestamp = max(m['timestamp'] for m in metrics)
+            db.update_last_platform_update('twitter', user['id'], latest_timestamp)
+            
+        return metrics
+
+    def _fetch_metrics(self, username: str, history_type: str = 'default') -> List[Dict]:
+        """
+        Fetch metrics from Twitter API
+        
+        Args:
+            username: Twitter handle
+            history_type: Either 'default' or 'extended'
+        """
         try:
+            # Comment out the original API request code
+            """
             headers = {
                 'query': username,
-                'history': 'default',
+                'history': history_type,
                 'clientid': self.client_id,
                 'token': self.token
             }
@@ -52,15 +96,32 @@ class TwitterFetcher:
             
             response.raise_for_status()
             data = response.json()
+            """
             
-            return {
-                'username': username,
-                'followers': data.get('followers'),
-                'following': data.get('following'),
-                'tweets': data.get('tweets'),
-                'engagement_rate': data.get('engagement_rate'),
-                'timestamp': data.get('timestamp')
-            }
+            # Instead read from local JSON file
+            with open('raw-data/twitter_history_castacrypto_20250207_002803.json', 'r') as f:
+                data = json.load(f)
+            
+            # Save raw response
+            response_type = 'twitter_history' if history_type == 'extended' else 'twitter'
+            self._save_raw_response(data, response_type, username)
+            
+            # Extract daily metrics
+            metrics = []
+            if data.get('data', {}).get('daily'):
+                for daily_data in data['data']['daily']:
+                    metric = {
+                        'username': username,
+                        'followers': daily_data.get('followers'),
+                        'following': daily_data.get('following'),
+                        'tweets': daily_data.get('tweets'),
+                        'favorites': daily_data.get('favorites'),
+                        'timestamp': datetime.strptime(daily_data['date'], '%Y-%m-%d')
+                    }
+                    metrics.append(metric)
+            
+            return metrics
+
         except requests.exceptions.Timeout:
             self.logger.error(f"Timeout while fetching data for {username}")
             raise
@@ -69,43 +130,4 @@ class TwitterFetcher:
             raise
         except ValueError as e:
             self.logger.error(f"Invalid JSON response for {username}: {str(e)}")
-            raise
-
-    def fetch_user_history(self, user: Dict) -> List[Dict]:
-        """Fetch one year of historical data for a user"""
-        try:
-            headers = {
-                'query': user['handle'],
-                'history': 'extended',
-                'clientid': self.client_id,
-                'token': self.token
-            }
-            
-            response = requests.get(
-                self.base_url,
-                headers=headers,
-                timeout=10
-            )
-            
-            response.raise_for_status()
-            data = response.json()
-            
-            # Process historical data
-            metrics = []
-            for history_point in data.get('history', []):
-                metric = {
-                    'influencer_id': user['id'],
-                    'username': user['handle'],
-                    'followers': history_point.get('followers'),
-                    'following': history_point.get('following'),
-                    'tweets': history_point.get('tweets'),
-                    'engagement_rate': history_point.get('engagement_rate'),
-                    'timestamp': history_point.get('timestamp')
-                }
-                metrics.append(metric)
-            
-            return metrics
-            
-        except Exception as e:
-            self.logger.error(f"Error fetching history for {user['handle']}: {str(e)}")
             raise 
