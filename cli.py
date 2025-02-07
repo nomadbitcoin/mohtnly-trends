@@ -42,8 +42,8 @@ def prompt_handle(platform: str, same_handle: bool = False, previous_handle: str
             return None
             
         # Validate YouTube channel ID
-        if platform == 'youtube' and not handle.startswith('UC_'):
-            print("Error: YouTube channel ID must start with 'UC_'")
+        if platform == 'youtube' and not handle.startswith('UC'):
+            print("Error: YouTube channel ID must start with 'UC'")
             continue
             
         return handle
@@ -194,8 +194,8 @@ def edit_influencer():
                 break
                 
             # Validate YouTube channel ID
-            if platform == 'youtube' and not new_handle.startswith('UC_'):
-                print("Error: YouTube channel ID must start with 'UC_'")
+            if platform == 'youtube' and not new_handle.startswith('UC'):
+                print("Error: YouTube channel ID must start with 'UC'")
                 continue
                 
             updates[handle_key] = new_handle
