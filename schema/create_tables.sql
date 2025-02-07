@@ -33,8 +33,6 @@ CREATE TABLE IF NOT EXISTS `{project_id}.{dataset}.youtube_metrics` (
     influencer_id STRING NOT NULL,
     subscribers INT64 DEFAULT 0,
     total_views INT64 DEFAULT 0,
-    videos INT64 DEFAULT 0,
-    engagement_rate FLOAT64 DEFAULT 0.0,
     timestamp TIMESTAMP NOT NULL,
     created_at TIMESTAMP NOT NULL
 );

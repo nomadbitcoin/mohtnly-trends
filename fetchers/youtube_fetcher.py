@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from .base_fetcher import BaseFetcher
 from database import DatabaseManager
+import json
 
 class YoutubeFetcher(BaseFetcher):
     def __init__(self):
@@ -80,6 +81,7 @@ class YoutubeFetcher(BaseFetcher):
             # Save metrics and update last update timestamp
             db.save_youtube_metrics(metrics)
             latest_timestamp = max(m['timestamp'] for m in metrics)
+            # Ensure timestamp is UTC aware
             if latest_timestamp.tzinfo is None:
                 latest_timestamp = latest_timestamp.replace(tzinfo=timezone.utc)
             db.update_last_platform_update('youtube', user['id'], latest_timestamp)
@@ -102,6 +104,7 @@ class YoutubeFetcher(BaseFetcher):
             # Save metrics and update last update timestamp
             db.save_youtube_metrics(metrics)
             latest_timestamp = max(m['timestamp'] for m in metrics)
+            db.update_last_platform_update('youtube', user['id'], latest_timestamp)
             
         return metrics
 
@@ -114,6 +117,7 @@ class YoutubeFetcher(BaseFetcher):
             history_type: Either 'default' or 'extended'
         """
         try:
+            # Comment out the original API request code
             headers = {
                 'query': channel_id,
                 'history': history_type,
@@ -130,20 +134,23 @@ class YoutubeFetcher(BaseFetcher):
             response.raise_for_status()
             data = response.json()
             
+            # # Instead read from local JSON file
+            # with open('raw-data/youtube_UC_mcI6nIlx5bp8QYJuxo7Rw_20250207_025238.json', 'r') as f:
+            #     data = json.load(f)
+            
             # Save raw response
             response_type = 'youtube_history' if history_type == 'extended' else 'youtube'
             self._save_raw_response(data, response_type, channel_id)
             
             # Extract daily metrics
             metrics = []
-            if data.get('daily'):
-                for daily_data in data['daily']:
+            if data.get('data', {}).get('daily'):
+                for daily_data in data['data']['daily']:
                     # Parse date and make it timezone-aware
                     timestamp = datetime.strptime(daily_data['date'], '%Y-%m-%d')
                     timestamp = timestamp.replace(tzinfo=timezone.utc)
                     
                     metric = {
-                        'channel_id': channel_id,
                         'subscribers': daily_data.get('subs'),
                         'total_views': daily_data.get('views'),
                         'timestamp': timestamp

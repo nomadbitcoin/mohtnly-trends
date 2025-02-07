@@ -36,8 +36,17 @@ def prompt_handle(platform: str, same_handle: bool = False, previous_handle: str
     if same_handle and previous_handle:
         return previous_handle
     
-    handle = input(f"Enter {platform} handle (press Enter to skip): ").strip()
-    return handle if handle else None
+    while True:
+        handle = input(f"Enter {platform} handle (press Enter to skip): ").strip()
+        if not handle:
+            return None
+            
+        # Validate YouTube channel ID
+        if platform == 'youtube' and not handle.startswith('UC_'):
+            print("Error: YouTube channel ID must start with 'UC_'")
+            continue
+            
+        return handle
 
 def add_influencer():
     """Interactive CLI to add a new influencer"""
@@ -156,9 +165,18 @@ def edit_influencer():
     print("\nEnter new handles (press Enter to keep current):")
     for platform in platforms:
         handle_key = f"{platform}_handle"
-        new_handle = input(f"{platform.title()}: ").strip()
-        if new_handle:
+        while True:
+            new_handle = input(f"{platform.title()}: ").strip()
+            if not new_handle:
+                break
+                
+            # Validate YouTube channel ID
+            if platform == 'youtube' and not new_handle.startswith('UC_'):
+                print("Error: YouTube channel ID must start with 'UC_'")
+                continue
+                
             updates[handle_key] = new_handle
+            break
     
     if not updates:
         logger.info("No changes made")
@@ -321,7 +339,13 @@ def fetch_user_metrics():
         except Exception as e:
             logger.error(f"Error fetching TikTok metrics: {str(e)}")
 
-    # Add similar blocks for other platforms when implemented
-    # if 'youtube' in influencer.get('handles', {}):
-    #     youtube_fetcher = YoutubeFetcher()
-    #     ...
+    if 'youtube' in influencer.get('handles', {}):
+        try:
+            youtube_fetcher = YoutubeFetcher()
+            youtube_fetcher.fetch_user({
+                'id': influencer['id'],
+                'handle': influencer['handles']['youtube']
+            })
+            logger.info(f"Successfully processed YouTube metrics for {influencer['handles']['youtube']}")
+        except Exception as e:
+            logger.error(f"Error fetching YouTube metrics: {str(e)}")

@@ -576,7 +576,6 @@ class DatabaseManager:
         Args:
             metrics: List of YouTube metrics with fields:
                 - influencer_id: str
-                - channel_id: str
                 - subscribers: int
                 - total_views: int
                 - timestamp: datetime
@@ -596,9 +595,8 @@ class DatabaseManager:
                 metric = {
                     'id': str(uuid.uuid4()),
                     'influencer_id': item['influencer_id'],
-                    'channel_id': item['channel_id'],
-                    'subscribers': item['subscribers'],
-                    'total_views': item['total_views'],
+                    'subscribers': item.get('subscribers', 0),
+                    'total_views': item.get('total_views', 0),
                     'timestamp': item['timestamp'],
                     'created_at': datetime.utcnow()
                 }
@@ -611,7 +609,6 @@ class DatabaseManager:
             schema = [
                 bigquery.SchemaField("id", "STRING", mode="REQUIRED"),
                 bigquery.SchemaField("influencer_id", "STRING", mode="REQUIRED"),
-                bigquery.SchemaField("channel_id", "STRING", mode="REQUIRED"),
                 bigquery.SchemaField("subscribers", "INTEGER", mode="NULLABLE"),
                 bigquery.SchemaField("total_views", "INTEGER", mode="NULLABLE"),
                 bigquery.SchemaField("timestamp", "TIMESTAMP", mode="REQUIRED"),

@@ -118,25 +118,25 @@ class TiktokFetcher(BaseFetcher):
         """
         try:
             # Comment out the original API request code
-            # headers = {
-            #     'query': username,
-            #     'history': history_type,
-            #     'clientid': self.client_id,
-            #     'token': self.token
-            # }
+            headers = {
+                'query': username,
+                'history': history_type,
+                'clientid': self.client_id,
+                'token': self.token
+            }
             
-            # response = requests.get(
-            #     self.base_url,
-            #     headers=headers,
-            #     timeout=10
-            # )
+            response = requests.get(
+                self.base_url,
+                headers=headers,
+                timeout=10
+            )
             
-            # response.raise_for_status()
-            # data = response.json()
+            response.raise_for_status()
+            data = response.json()
             
             # # Instead read from local JSON file
-            with open('raw-data/tiktok_castacrypto_mock.json', 'r') as f:
-                data = json.load(f)
+            # with open('raw-data/tiktok_castacrypto_mock.json', 'r') as f:
+            #     data = json.load(f)
             
             # Save raw response
             response_type = 'tiktok_history' if history_type == 'extended' else 'tiktok'
