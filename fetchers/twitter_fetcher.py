@@ -104,7 +104,7 @@ class TwitterFetcher(BaseFetcher):
             # Save metrics and update last update timestamp
             db.save_twitter_metrics(metrics)
             latest_timestamp = max(m['timestamp'] for m in metrics)
-            # db.update_last_platform_update('twitter', user['id'], latest_timestamp)
+            db.update_last_platform_update('twitter', user['id'], latest_timestamp)
             
         return metrics
 

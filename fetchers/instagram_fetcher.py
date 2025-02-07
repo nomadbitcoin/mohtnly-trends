@@ -104,7 +104,7 @@ class InstagramFetcher(BaseFetcher):
             # Save metrics and update last update timestamp
             db.save_instagram_metrics(metrics)
             latest_timestamp = max(m['timestamp'] for m in metrics)
-            # db.update_last_platform_update('instagram', user['id'], latest_timestamp)
+            db.update_last_platform_update('instagram', user['id'], latest_timestamp)
             
         return metrics
 

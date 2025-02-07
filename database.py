@@ -712,6 +712,78 @@ class DatabaseManager:
             self.logger.error(f"Error saving Instagram metrics: {str(e)}")
             raise
 
+    def save_tiktok_metrics(self, metrics: List[Dict]):
+        """
+        Save TikTok metrics to BigQuery
+        
+        Args:
+            metrics: List of TikTok metrics with fields:
+                - influencer_id: str
+                - username: str
+                - followers: int
+                - following: int
+                - likes: int
+                - uploads: int
+                - timestamp: datetime
+        """
+        try:
+            if not metrics:
+                self.logger.warning("No TikTok metrics to save")
+                return
+
+            # In dev_mode, also save to CSV
+            if Config.DEV_MODE:
+                self._save_to_csv('tiktok', metrics)
+
+            # Prepare data for BigQuery
+            metrics_data = []
+            for item in metrics:
+                metric = {
+                    'id': str(uuid.uuid4()),
+                    'influencer_id': item['influencer_id'],
+                    'followers': item.get('followers', 0),
+                    'following': item.get('following', 0),
+                    'likes': item.get('likes', 0),
+                    'uploads': item.get('uploads', 0),
+                    'timestamp': item['timestamp'],
+                    'created_at': datetime.utcnow()
+                }
+                metrics_data.append(metric)
+
+            df = pd.DataFrame(metrics_data)
+            table_id = f"{self.project_id}.{self.dataset_id}.tiktok_metrics"
+            
+            # Define schema
+            schema = [
+                bigquery.SchemaField("id", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("influencer_id", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("followers", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("following", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("likes", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("uploads", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("timestamp", "TIMESTAMP", mode="REQUIRED"),
+                bigquery.SchemaField("created_at", "TIMESTAMP", mode="REQUIRED"),
+            ]
+
+            job_config = bigquery.LoadJobConfig(
+                write_disposition="WRITE_APPEND",
+                schema=schema
+            )
+
+            @retry.Retry(predicate=retry.if_transient_error)
+            def load_table():
+                job = self.client.load_table_from_dataframe(
+                    df, table_id, job_config=job_config
+                )
+                return job.result()
+
+            load_table()
+            self.logger.info(f"Successfully saved {len(metrics)} TikTok metrics")
+
+        except Exception as e:
+            self.logger.error(f"Error saving TikTok metrics: {str(e)}")
+            raise
+
 def init_database(client):
     logger = logging.getLogger(__name__)
     try:

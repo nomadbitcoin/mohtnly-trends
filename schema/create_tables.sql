@@ -50,4 +50,15 @@ CREATE TABLE IF NOT EXISTS `{project_id}.{dataset}.instagram_metrics` (
     engagement_rate FLOAT64 DEFAULT 0.0,
     timestamp TIMESTAMP NOT NULL,
     created_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS `{project_id}.{dataset}.tiktok_metrics` (
+    id STRING NOT NULL,
+    influencer_id STRING NOT NULL,
+    followers INT64 DEFAULT 0,
+    `following` INT64 DEFAULT 0,
+    likes INT64 DEFAULT 0,
+    uploads INT64 DEFAULT 0,
+    timestamp TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL
 ); 
