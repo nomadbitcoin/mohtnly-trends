@@ -2,8 +2,9 @@ import requests
 from typing import List, Dict
 from config import Config
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from .base_fetcher import BaseFetcher
+from database import DatabaseManager
 
 class YoutubeFetcher(BaseFetcher):
     def __init__(self):
@@ -21,6 +22,8 @@ class YoutubeFetcher(BaseFetcher):
             last_updates: Dictionary mapping user_id to their last update datetime
         """
         results = []
+        db = DatabaseManager()
+        
         for user in users:
             try:
                 last_update = last_updates.get(user['id'])
@@ -28,19 +31,92 @@ class YoutubeFetcher(BaseFetcher):
                     self.logger.info(f"Skipping {user['handle']} - last update was less than 30 days ago")
                     continue
 
-                data = self.fetch_user(user['handle'])
-                if data:
-                    data['influencer_id'] = user['id']
-                    results.append(data)
+                metrics = self._fetch_metrics(user['handle'], history_type='default')
+                if metrics:
+                    # Add influencer_id to each metric
+                    for metric in metrics:
+                        metric['influencer_id'] = user['id']
+                    results.extend(metrics)
+                    
+                    # Save metrics and update last update timestamp
+                    db.save_youtube_metrics(metrics)
+                    latest_timestamp = max(m['timestamp'] for m in metrics)
+                    db.update_last_platform_update('youtube', user['id'], latest_timestamp)
+                    
             except Exception as e:
                 self.logger.error(f"Error fetching data for YouTube user {user['handle']}: {str(e)}")
+            
         return results
 
-    def fetch_user(self, channel_id: str) -> Dict:
+    def fetch_user(self, user: Dict) -> List[Dict]:
+        """
+        Fetch recent metrics for a user if needed
+        
+        Args:
+            user: Dictionary with 'id' and 'handle'
+        """
+        db = DatabaseManager()
+        
+        # Check last update time
+        last_update = db.get_platform_last_update('youtube', user['id'])
+        if last_update:
+            # Convert last_update to UTC if it's naive
+            if last_update.tzinfo is None:
+                last_update = last_update.replace(tzinfo=timezone.utc)
+            
+            # Get current time in UTC
+            now = datetime.now(timezone.utc)
+            
+            if (now - last_update) < timedelta(days=30):
+                self.logger.info(f"Skipping {user['handle']} - last update was less than 30 days ago")
+                return []
+
+        metrics = self._fetch_metrics(user['handle'], history_type='default')
+        if metrics:
+            # Add influencer_id to each metric
+            for metric in metrics:
+                metric['influencer_id'] = user['id']
+            
+            # Save metrics and update last update timestamp
+            db.save_youtube_metrics(metrics)
+            latest_timestamp = max(m['timestamp'] for m in metrics)
+            if latest_timestamp.tzinfo is None:
+                latest_timestamp = latest_timestamp.replace(tzinfo=timezone.utc)
+            db.update_last_platform_update('youtube', user['id'], latest_timestamp)
+            
+        return metrics
+
+    def fetch_user_history(self, user: Dict) -> List[Dict]:
+        """
+        Fetch extended historical data for a user
+        Always fetches regardless of last update time since this is for initialization
+        """
+        db = DatabaseManager()
+        metrics = self._fetch_metrics(user['handle'], history_type='extended')
+        
+        if metrics:
+            # Add influencer_id to each metric
+            for metric in metrics:
+                metric['influencer_id'] = user['id']
+            
+            # Save metrics and update last update timestamp
+            db.save_youtube_metrics(metrics)
+            latest_timestamp = max(m['timestamp'] for m in metrics)
+            
+        return metrics
+
+    def _fetch_metrics(self, channel_id: str, history_type: str = 'default') -> List[Dict]:
+        """
+        Fetch metrics from YouTube API
+        
+        Args:
+            channel_id: YouTube channel ID
+            history_type: Either 'default' or 'extended'
+        """
         try:
             headers = {
                 'query': channel_id,
-                'history': 'default',
+                'history': history_type,
                 'clientid': self.client_id,
                 'token': self.token
             }
@@ -55,16 +131,27 @@ class YoutubeFetcher(BaseFetcher):
             data = response.json()
             
             # Save raw response
-            self._save_raw_response(data, 'youtube', channel_id)
+            response_type = 'youtube_history' if history_type == 'extended' else 'youtube'
+            self._save_raw_response(data, response_type, channel_id)
             
-            return {
-                'channel_id': channel_id,
-                'subscribers': data.get('subscribers'),
-                'total_views': data.get('views'),
-                'videos': data.get('videos'),
-                'engagement_rate': data.get('engagement_rate'),
-                'timestamp': data.get('timestamp')
-            }
+            # Extract daily metrics
+            metrics = []
+            if data.get('daily'):
+                for daily_data in data['daily']:
+                    # Parse date and make it timezone-aware
+                    timestamp = datetime.strptime(daily_data['date'], '%Y-%m-%d')
+                    timestamp = timestamp.replace(tzinfo=timezone.utc)
+                    
+                    metric = {
+                        'channel_id': channel_id,
+                        'subscribers': daily_data.get('subs'),
+                        'total_views': daily_data.get('views'),
+                        'timestamp': timestamp
+                    }
+                    metrics.append(metric)
+            
+            return metrics
+
         except requests.exceptions.Timeout:
             self.logger.error(f"Timeout while fetching data for {channel_id}")
             raise
@@ -73,45 +160,4 @@ class YoutubeFetcher(BaseFetcher):
             raise
         except ValueError as e:
             self.logger.error(f"Invalid JSON response for {channel_id}: {str(e)}")
-            raise
-
-    def fetch_user_history(self, user: Dict) -> List[Dict]:
-        """Fetch one year of historical data for a user"""
-        try:
-            headers = {
-                'query': user['handle'],
-                'history': 'extended',
-                'clientid': self.client_id,
-                'token': self.token
-            }
-            
-            response = requests.get(
-                self.base_url,
-                headers=headers,
-                timeout=10
-            )
-            
-            response.raise_for_status()
-            data = response.json()
-            
-            # Save raw response
-            self._save_raw_response(data, 'youtube_history', user['handle'])
-            
-            metrics = []
-            for history_point in data.get('history', []):
-                metric = {
-                    'influencer_id': user['id'],
-                    'channel_id': user['handle'],
-                    'subscribers': history_point.get('subscribers'),
-                    'total_views': history_point.get('views'),
-                    'videos': history_point.get('videos'),
-                    'engagement_rate': history_point.get('engagement_rate'),
-                    'timestamp': history_point.get('timestamp')
-                }
-                metrics.append(metric)
-            
-            return metrics
-            
-        except Exception as e:
-            self.logger.error(f"Error fetching history for {user['handle']}: {str(e)}")
             raise 

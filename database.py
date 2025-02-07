@@ -569,6 +569,74 @@ class DatabaseManager:
             self.logger.error(f"Error saving Twitter metrics: {str(e)}")
             raise
 
+    def save_youtube_metrics(self, metrics: List[Dict]):
+        """
+        Save YouTube metrics to BigQuery
+        
+        Args:
+            metrics: List of YouTube metrics with fields:
+                - influencer_id: str
+                - channel_id: str
+                - subscribers: int
+                - total_views: int
+                - timestamp: datetime
+        """
+        try:
+            if not metrics:
+                self.logger.warning("No YouTube metrics to save")
+                return
+
+            # In dev_mode, also save to CSV
+            if Config.DEV_MODE:
+                self._save_to_csv('youtube', metrics)
+
+            # Prepare data for BigQuery
+            metrics_data = []
+            for item in metrics:
+                metric = {
+                    'id': str(uuid.uuid4()),
+                    'influencer_id': item['influencer_id'],
+                    'channel_id': item['channel_id'],
+                    'subscribers': item['subscribers'],
+                    'total_views': item['total_views'],
+                    'timestamp': item['timestamp'],
+                    'created_at': datetime.utcnow()
+                }
+                metrics_data.append(metric)
+
+            df = pd.DataFrame(metrics_data)
+            table_id = f"{self.project_id}.{self.dataset_id}.youtube_metrics"
+            
+            # Define schema
+            schema = [
+                bigquery.SchemaField("id", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("influencer_id", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("channel_id", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("subscribers", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("total_views", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("timestamp", "TIMESTAMP", mode="REQUIRED"),
+                bigquery.SchemaField("created_at", "TIMESTAMP", mode="REQUIRED"),
+            ]
+
+            job_config = bigquery.LoadJobConfig(
+                write_disposition="WRITE_APPEND",
+                schema=schema
+            )
+
+            @retry.Retry(predicate=retry.if_transient_error)
+            def load_table():
+                job = self.client.load_table_from_dataframe(
+                    df, table_id, job_config=job_config
+                )
+                return job.result()
+
+            load_table()
+            self.logger.info(f"Successfully saved {len(metrics)} YouTube metrics")
+
+        except Exception as e:
+            self.logger.error(f"Error saving YouTube metrics: {str(e)}")
+            raise
+
 def init_database(client):
     logger = logging.getLogger(__name__)
     try:
