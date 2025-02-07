@@ -2,8 +2,10 @@ import requests
 from typing import List, Dict
 from config import Config
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from .base_fetcher import BaseFetcher
+from database import DatabaseManager
+import json
 
 class InstagramFetcher(BaseFetcher):
     def __init__(self):
@@ -21,6 +23,8 @@ class InstagramFetcher(BaseFetcher):
             last_updates: Dictionary mapping user_id to their last update datetime
         """
         results = []
+        db = DatabaseManager()
+        
         for user in users:
             try:
                 last_update = last_updates.get(user['id'])
@@ -28,19 +32,95 @@ class InstagramFetcher(BaseFetcher):
                     self.logger.info(f"Skipping {user['handle']} - last update was less than 30 days ago")
                     continue
 
-                data = self.fetch_user(user['handle'])
-                if data:
-                    data['influencer_id'] = user['id']
-                    results.append(data)
+                metrics = self._fetch_metrics(user['handle'], history_type='default')
+                if metrics:
+                    # Add influencer_id to each metric
+                    for metric in metrics:
+                        metric['influencer_id'] = user['id']
+                    results.extend(metrics)
+                    
+                    # Save metrics and update last update timestamp
+                    db.save_instagram_metrics(metrics)
+                    latest_timestamp = max(m['timestamp'] for m in metrics)
+                    db.update_last_platform_update('instagram', user['id'], latest_timestamp)
+                    
             except Exception as e:
                 self.logger.error(f"Error fetching data for Instagram user {user['handle']}: {str(e)}")
+            
         return results
 
-    def fetch_user(self, username: str) -> Dict:
+    def fetch_user(self, user: Dict) -> List[Dict]:
+        """
+        Fetch recent metrics for a user if needed
+        
+        Args:
+            user: Dictionary with 'id' and 'handle'
+        """
+        db = DatabaseManager()
+        
+        # Check last update time
+        last_update = db.get_platform_last_update('instagram', user['id'])
+        if last_update:
+            # Convert last_update to UTC if it's naive
+            if last_update.tzinfo is None:
+                last_update = last_update.replace(tzinfo=timezone.utc)
+            
+            # Get current time in UTC
+            now = datetime.now(timezone.utc)
+            
+            if (now - last_update) < timedelta(days=30):
+                self.logger.info(f"Skipping {user['handle']} - last update was less than 30 days ago")
+                return []
+
+        metrics = self._fetch_metrics(user['handle'], history_type='default')
+        if metrics:
+            # Add influencer_id to each metric
+            for metric in metrics:
+                metric['influencer_id'] = user['id']
+            
+            # Save metrics and update last update timestamp
+            db.save_instagram_metrics(metrics)
+            latest_timestamp = max(m['timestamp'] for m in metrics)
+            # Ensure timestamp is UTC aware
+            if latest_timestamp.tzinfo is None:
+                latest_timestamp = latest_timestamp.replace(tzinfo=timezone.utc)
+            db.update_last_platform_update('instagram', user['id'], latest_timestamp)
+            
+        return metrics
+
+    def fetch_user_history(self, user: Dict) -> List[Dict]:
+        """
+        Fetch extended historical data for a user
+        Always fetches regardless of last update time since this is for initialization
+        """
+        db = DatabaseManager()
+        metrics = self._fetch_metrics(user['handle'], history_type='extended')
+        
+        if metrics:
+            # Add influencer_id to each metric
+            for metric in metrics:
+                metric['influencer_id'] = user['id']
+            
+            # Save metrics and update last update timestamp
+            db.save_instagram_metrics(metrics)
+            latest_timestamp = max(m['timestamp'] for m in metrics)
+            # db.update_last_platform_update('instagram', user['id'], latest_timestamp)
+            
+        return metrics
+
+    def _fetch_metrics(self, username: str, history_type: str = 'default') -> List[Dict]:
+        """
+        Fetch metrics from Instagram API
+        
+        Args:
+            username: Instagram handle
+            history_type: Either 'default' or 'extended'
+        """
         try:
+            # Comment out the original API request code
             headers = {
                 'query': username,
-                'history': 'default',
+                'history': history_type,
                 'clientid': self.client_id,
                 'token': self.token
             }
@@ -54,17 +134,35 @@ class InstagramFetcher(BaseFetcher):
             response.raise_for_status()
             data = response.json()
             
-            # Save raw response
-            self._save_raw_response(data, 'instagram', username)
+            # # Instead read from local JSON file
+            # with open('raw-data/instagram_castacrypto_mock.json', 'r') as f:
+            #     data = json.load(f)
             
-            return {
-                'username': username,
-                'followers': data.get('followers'),
-                'following': data.get('following'),
-                'posts': data.get('posts'),
-                'engagement_rate': data.get('engagement_rate'),
-                'timestamp': data.get('timestamp')
-            }
+            # Save raw response
+            response_type = 'instagram_history' if history_type == 'extended' else 'instagram'
+            self._save_raw_response(data, response_type, username)
+            
+            # Extract daily metrics
+            metrics = []
+            if data.get('data', {}).get('daily'):
+                for daily_data in data['data']['daily']:
+                    # Parse date and make it timezone-aware
+                    timestamp = datetime.strptime(daily_data['date'], '%Y-%m-%d')
+                    timestamp = timestamp.replace(tzinfo=timezone.utc)
+                    
+                    metric = {
+                        'username': username,
+                        'followers': daily_data.get('followers'),
+                        'following': daily_data.get('following'),
+                        'posts': daily_data.get('media'),  # media field maps to posts
+                        'avg_likes': daily_data.get('avg_likes'),
+                        'avg_comments': daily_data.get('avg_comments'),
+                        'timestamp': timestamp
+                    }
+                    metrics.append(metric)
+            
+            return metrics
+
         except requests.exceptions.Timeout:
             self.logger.error(f"Timeout while fetching data for {username}")
             raise
@@ -73,45 +171,4 @@ class InstagramFetcher(BaseFetcher):
             raise
         except ValueError as e:
             self.logger.error(f"Invalid JSON response for {username}: {str(e)}")
-            raise
-
-    def fetch_user_history(self, user: Dict) -> List[Dict]:
-        """Fetch one year of historical data for a user"""
-        try:
-            headers = {
-                'query': user['handle'],
-                'history': 'extended',
-                'clientid': self.client_id,
-                'token': self.token
-            }
-            
-            response = requests.get(
-                self.base_url,
-                headers=headers,
-                timeout=10
-            )
-            
-            response.raise_for_status()
-            data = response.json()
-            
-            # Save raw response
-            self._save_raw_response(data, 'instagram_history', user['handle'])
-            
-            metrics = []
-            for history_point in data.get('history', []):
-                metric = {
-                    'influencer_id': user['id'],
-                    'username': user['handle'],
-                    'followers': history_point.get('followers'),
-                    'following': history_point.get('following'),
-                    'posts': history_point.get('posts'),
-                    'engagement_rate': history_point.get('engagement_rate'),
-                    'timestamp': history_point.get('timestamp')
-                }
-                metrics.append(metric)
-            
-            return metrics
-            
-        except Exception as e:
-            self.logger.error(f"Error fetching history for {user['handle']}: {str(e)}")
             raise 

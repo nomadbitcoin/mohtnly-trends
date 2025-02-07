@@ -637,6 +637,81 @@ class DatabaseManager:
             self.logger.error(f"Error saving YouTube metrics: {str(e)}")
             raise
 
+    def save_instagram_metrics(self, metrics: List[Dict]):
+        """
+        Save Instagram metrics to BigQuery
+        
+        Args:
+            metrics: List of Instagram metrics with fields:
+                - influencer_id: str
+                - username: str
+                - followers: int
+                - following: int
+                - posts: int
+                - avg_likes: int
+                - avg_comments: float
+                - timestamp: datetime
+        """
+        try:
+            if not metrics:
+                self.logger.warning("No Instagram metrics to save")
+                return
+
+            # In dev_mode, also save to CSV
+            if Config.DEV_MODE:
+                self._save_to_csv('instagram', metrics)
+
+            # Prepare data for BigQuery
+            metrics_data = []
+            for item in metrics:
+                metric = {
+                    'id': str(uuid.uuid4()),
+                    'influencer_id': item['influencer_id'],
+                    'followers': item.get('followers', 0),
+                    'following': item.get('following', 0),
+                    'posts': item.get('posts', 0),
+                    'avg_likes': item.get('avg_likes', 0),
+                    'avg_comments': item.get('avg_comments', 0.0),
+                    'timestamp': item['timestamp'],
+                    'created_at': datetime.utcnow()
+                }
+                metrics_data.append(metric)
+
+            df = pd.DataFrame(metrics_data)
+            table_id = f"{self.project_id}.{self.dataset_id}.instagram_metrics"
+            
+            # Define schema
+            schema = [
+                bigquery.SchemaField("id", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("influencer_id", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("followers", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("following", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("posts", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("avg_likes", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("avg_comments", "FLOAT", mode="NULLABLE"),
+                bigquery.SchemaField("timestamp", "TIMESTAMP", mode="REQUIRED"),
+                bigquery.SchemaField("created_at", "TIMESTAMP", mode="REQUIRED"),
+            ]
+
+            job_config = bigquery.LoadJobConfig(
+                write_disposition="WRITE_APPEND",
+                schema=schema
+            )
+
+            @retry.Retry(predicate=retry.if_transient_error)
+            def load_table():
+                job = self.client.load_table_from_dataframe(
+                    df, table_id, job_config=job_config
+                )
+                return job.result()
+
+            load_table()
+            self.logger.info(f"Successfully saved {len(metrics)} Instagram metrics")
+
+        except Exception as e:
+            self.logger.error(f"Error saving Instagram metrics: {str(e)}")
+            raise
+
 def init_database(client):
     logger = logging.getLogger(__name__)
     try:

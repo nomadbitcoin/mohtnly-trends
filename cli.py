@@ -299,10 +299,18 @@ def fetch_user_metrics():
         except Exception as e:
             logger.error(f"Error fetching Twitter metrics: {str(e)}")
 
+    if 'instagram' in influencer.get('handles', {}):
+        try:
+            instagram_fetcher = InstagramFetcher()
+            instagram_fetcher.fetch_user({
+                'id': influencer['id'],
+                'handle': influencer['handles']['instagram']
+            })
+            logger.info(f"Successfully processed Instagram metrics for {influencer['handles']['instagram']}")
+        except Exception as e:
+            logger.error(f"Error fetching Instagram metrics: {str(e)}")
+
     # Add similar blocks for other platforms when implemented
     # if 'youtube' in influencer.get('handles', {}):
     #     youtube_fetcher = YoutubeFetcher()
     #     ...
-    # if 'instagram' in influencer.get('handles', {}):
-    #     instagram_fetcher = InstagramFetcher()
-    #     ... 

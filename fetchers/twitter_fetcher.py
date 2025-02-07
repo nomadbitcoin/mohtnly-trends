@@ -134,8 +134,8 @@ class TwitterFetcher(BaseFetcher):
             response.raise_for_status()
             data = response.json()
             
-            # # Instead read from local JSON file
-            # with open('raw-data/twitter_history_castacrypto_20250207_002803.json', 'r') as f:
+            # Instead read from local JSON file
+            # with open('raw-data/twitter_castacrypto_mock.json', 'r') as f:
             #     data = json.load(f)
             
             # Save raw response

@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS `{project_id}.{dataset}.instagram_metrics` (
     followers INT64 DEFAULT 0,
     `following` INT64 DEFAULT 0,
     posts INT64 DEFAULT 0,
+    avg_likes INT64 DEFAULT 0,
+    avg_comments FLOAT64 DEFAULT 0.0,
     engagement_rate FLOAT64 DEFAULT 0.0,
     timestamp TIMESTAMP NOT NULL,
     created_at TIMESTAMP NOT NULL
