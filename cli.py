@@ -111,15 +111,38 @@ def add_influencer():
             except Exception as e:
                 logger.error(f"Error fetching Twitter history: {str(e)}")
 
-        # Add similar blocks for other platforms when implemented
-        # if handles.get('youtube_handle'):
-        #     from fetchers.youtube_fetcher import YoutubeFetcher
-        #     youtube_fetcher = YoutubeFetcher()
-        #     ...
-        # if handles.get('instagram_handle'):
-        #     from fetchers.instagram_fetcher import InstagramFetcher
-        #     instagram_fetcher = InstagramFetcher()
-        #     ...
+        if handles.get('youtube_handle'):
+            try:
+                youtube_fetcher = YoutubeFetcher()
+                youtube_fetcher.fetch_user_history({
+                    'id': influencer_data['id'],
+                    'handle': handles['youtube_handle']
+                })
+                logger.info(f"Successfully fetched YouTube history for {handles['youtube_handle']}")
+            except Exception as e:
+                logger.error(f"Error fetching YouTube history: {str(e)}")
+
+        if handles.get('instagram_handle'):
+            try:
+                instagram_fetcher = InstagramFetcher()
+                instagram_fetcher.fetch_user_history({
+                    'id': influencer_data['id'],
+                    'handle': handles['instagram_handle']
+                })
+                logger.info(f"Successfully fetched Instagram history for {handles['instagram_handle']}")
+            except Exception as e:
+                logger.error(f"Error fetching Instagram history: {str(e)}")
+
+        if handles.get('tiktok_handle'):
+            try:
+                tiktok_fetcher = TiktokFetcher()
+                tiktok_fetcher.fetch_user_history({
+                    'id': influencer_data['id'],
+                    'handle': handles['tiktok_handle']
+                })
+                logger.info(f"Successfully fetched TikTok history for {handles['tiktok_handle']}")
+            except Exception as e:
+                logger.error(f"Error fetching TikTok history: {str(e)}")
                 
     except ValueError as e:
         logger.error(str(e))

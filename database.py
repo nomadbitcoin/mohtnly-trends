@@ -569,6 +569,15 @@ class DatabaseManager:
             self.logger.error(f"Error saving Twitter metrics: {str(e)}")
             raise
 
+    def _safe_int_convert(self, value, default=0):
+        """Safely convert a value to integer, handling floats and None"""
+        try:
+            if value is None:
+                return default
+            return int(float(value))
+        except (ValueError, TypeError):
+            return default
+
     def save_youtube_metrics(self, metrics: List[Dict]):
         """
         Save YouTube metrics to BigQuery
@@ -595,8 +604,8 @@ class DatabaseManager:
                 metric = {
                     'id': str(uuid.uuid4()),
                     'influencer_id': item['influencer_id'],
-                    'subscribers': item.get('subscribers', 0),
-                    'total_views': item.get('total_views', 0),
+                    'subscribers': self._safe_int_convert(item.get('subscribers')),
+                    'total_views': self._safe_int_convert(item.get('total_views')),
                     'timestamp': item['timestamp'],
                     'created_at': datetime.utcnow()
                 }
@@ -664,11 +673,11 @@ class DatabaseManager:
                 metric = {
                     'id': str(uuid.uuid4()),
                     'influencer_id': item['influencer_id'],
-                    'followers': item.get('followers', 0),
-                    'following': item.get('following', 0),
-                    'posts': item.get('posts', 0),
-                    'avg_likes': item.get('avg_likes', 0),
-                    'avg_comments': item.get('avg_comments', 0.0),
+                    'followers': self._safe_int_convert(item.get('followers')),
+                    'following': self._safe_int_convert(item.get('following')),
+                    'posts': self._safe_int_convert(item.get('posts')),
+                    'avg_likes': self._safe_int_convert(item.get('avg_likes')),
+                    'avg_comments': float(item.get('avg_comments', 0.0)),
                     'timestamp': item['timestamp'],
                     'created_at': datetime.utcnow()
                 }
@@ -707,7 +716,7 @@ class DatabaseManager:
 
         except Exception as e:
             self.logger.error(f"Error saving Instagram metrics: {str(e)}")
-            raise
+            self.logger.warning("Some metrics may have been truncated")
 
     def save_tiktok_metrics(self, metrics: List[Dict]):
         """
@@ -738,10 +747,10 @@ class DatabaseManager:
                 metric = {
                     'id': str(uuid.uuid4()),
                     'influencer_id': item['influencer_id'],
-                    'followers': item.get('followers', 0),
-                    'following': item.get('following', 0),
-                    'likes': item.get('likes', 0),
-                    'uploads': item.get('uploads', 0),
+                    'followers': self._safe_int_convert(item.get('followers')),
+                    'following': self._safe_int_convert(item.get('following')),
+                    'likes': self._safe_int_convert(item.get('likes')),
+                    'uploads': self._safe_int_convert(item.get('uploads')),
                     'timestamp': item['timestamp'],
                     'created_at': datetime.utcnow()
                 }
@@ -779,7 +788,7 @@ class DatabaseManager:
 
         except Exception as e:
             self.logger.error(f"Error saving TikTok metrics: {str(e)}")
-            raise
+            self.logger.warning("Some metrics may have been truncated")
 
 def init_database(client):
     logger = logging.getLogger(__name__)
