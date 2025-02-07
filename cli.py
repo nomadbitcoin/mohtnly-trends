@@ -259,4 +259,50 @@ def fetch_user_history():
         logger.info(f"Successfully exported history to {filename}")
         
     except Exception as e:
-        logger.error(f"Error fetching history: {str(e)}") 
+        logger.error(f"Error fetching history: {str(e)}")
+
+def fetch_user_metrics():
+    """Interactive CLI to fetch current metrics for a specific user"""
+    db = DatabaseManager()
+    logger = logging.getLogger(__name__)
+    
+    # List active influencers
+    influencers = db.get_active_influencers()
+    if not influencers:
+        logger.error("No active influencers found")
+        return
+        
+    print("\nAvailable influencers:")
+    for i, inf in enumerate(influencers, 1):
+        print(f"{i}. {inf['name']}")
+    
+    # Select influencer
+    while True:
+        try:
+            choice = int(input("\nSelect influencer number: "))
+            if 1 <= choice <= len(influencers):
+                influencer = influencers[choice - 1]
+                break
+            print("Invalid choice")
+        except ValueError:
+            print("Please enter a number")
+    
+    # Fetch metrics for each available platform
+    if 'twitter' in influencer.get('handles', {}):
+        try:
+            twitter_fetcher = TwitterFetcher()
+            twitter_fetcher.fetch_user({
+                'id': influencer['id'],
+                'handle': influencer['handles']['twitter']
+            })
+            logger.info(f"Successfully processed Twitter metrics for {influencer['handles']['twitter']}")
+        except Exception as e:
+            logger.error(f"Error fetching Twitter metrics: {str(e)}")
+
+    # Add similar blocks for other platforms when implemented
+    # if 'youtube' in influencer.get('handles', {}):
+    #     youtube_fetcher = YoutubeFetcher()
+    #     ...
+    # if 'instagram' in influencer.get('handles', {}):
+    #     instagram_fetcher = InstagramFetcher()
+    #     ... 

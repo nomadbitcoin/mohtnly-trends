@@ -7,7 +7,7 @@ from fetchers.twitter_fetcher import TwitterFetcher
 from fetchers.youtube_fetcher import YoutubeFetcher
 from fetchers.instagram_fetcher import InstagramFetcher
 from fetchers.tiktok_fetcher import TiktokFetcher
-from cli import add_influencer, edit_influencer, fetch_user_history, setup_logging, save_to_csv
+from cli import add_influencer, edit_influencer, fetch_user_history, setup_logging, save_to_csv, fetch_user_metrics
 
 def main():
     parser = argparse.ArgumentParser(description='Social Media Influencer Data Fetcher')
@@ -15,6 +15,7 @@ def main():
     parser.add_argument('--add_user', action='store_true', help='Add a new influencer')
     parser.add_argument('--edit_user', action='store_true', help='Edit existing influencer')
     parser.add_argument('--fetch_history', action='store_true', help='Fetch history for a specific user')
+    parser.add_argument('--fetch_user', action='store_true', help='Fetch last 30 day of data for a specific user')
     parser.add_argument('--save_csv', action='store_true', help='Save API responses to CSV')
     
     args = parser.parse_args()
@@ -36,6 +37,9 @@ def main():
             return
         elif args.fetch_history:
             fetch_user_history()
+            return
+        elif args.fetch_user:
+            fetch_user_metrics()
             return
         
         # Main data collection flow

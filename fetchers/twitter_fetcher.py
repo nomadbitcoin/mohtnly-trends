@@ -2,7 +2,7 @@ import requests
 from typing import List, Dict
 from config import Config
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from .base_fetcher import BaseFetcher
 from database import DatabaseManager
 import json
@@ -32,7 +32,7 @@ class TwitterFetcher(BaseFetcher):
                     self.logger.info(f"Skipping {user['handle']} - last update was less than 30 days ago")
                     continue
 
-                metrics = self.fetch_user(user['handle'])
+                metrics = self._fetch_metrics(user['handle'], history_type='default')
                 if metrics:
                     # Add influencer_id to each metric
                     for metric in metrics:
@@ -49,12 +49,50 @@ class TwitterFetcher(BaseFetcher):
             
         return results
 
-    def fetch_user(self, username: str) -> List[Dict]:
-        """Fetch recent metrics for a user with default history"""
-        return self._fetch_metrics(username, history_type='default')
+    def fetch_user(self, user: Dict) -> List[Dict]:
+        """
+        Fetch recent metrics for a user if needed
+        
+        Args:
+            user: Dictionary with 'id' and 'handle'
+        """
+        db = DatabaseManager()
+        
+        # Check last update time
+        last_update = db.get_platform_last_update('twitter', user['id'])
+        if last_update:
+            # Convert last_update to UTC if it's naive
+            if last_update.tzinfo is None:
+                last_update = last_update.replace(tzinfo=timezone.utc)
+            
+            # Get current time in UTC
+            now = datetime.now(timezone.utc)
+            
+            if (now - last_update) < timedelta(days=30):
+                self.logger.info(f"Skipping {user['handle']} - last update was less than 30 days ago")
+                return []
+
+        metrics = self._fetch_metrics(user['handle'], history_type='default')
+        if metrics:
+            # Add influencer_id to each metric
+            for metric in metrics:
+                metric['influencer_id'] = user['id']
+            
+            # Save metrics and update last update timestamp
+            db.save_twitter_metrics(metrics)
+            latest_timestamp = max(m['timestamp'] for m in metrics)
+            # Ensure timestamp is UTC aware
+            if latest_timestamp.tzinfo is None:
+                latest_timestamp = latest_timestamp.replace(tzinfo=timezone.utc)
+            db.update_last_platform_update('twitter', user['id'], latest_timestamp)
+            
+        return metrics
 
     def fetch_user_history(self, user: Dict) -> List[Dict]:
-        """Fetch extended historical data for a user"""
+        """
+        Fetch extended historical data for a user
+        Always fetches regardless of last update time since this is for initialization
+        """
         db = DatabaseManager()
         metrics = self._fetch_metrics(user['handle'], history_type='extended')
         
@@ -62,11 +100,11 @@ class TwitterFetcher(BaseFetcher):
             # Add influencer_id to each metric
             for metric in metrics:
                 metric['influencer_id'] = user['id']
-                
+            
             # Save metrics and update last update timestamp
             db.save_twitter_metrics(metrics)
             latest_timestamp = max(m['timestamp'] for m in metrics)
-            db.update_last_platform_update('twitter', user['id'], latest_timestamp)
+            # db.update_last_platform_update('twitter', user['id'], latest_timestamp)
             
         return metrics
 
@@ -80,7 +118,6 @@ class TwitterFetcher(BaseFetcher):
         """
         try:
             # Comment out the original API request code
-            """
             headers = {
                 'query': username,
                 'history': history_type,
@@ -96,11 +133,10 @@ class TwitterFetcher(BaseFetcher):
             
             response.raise_for_status()
             data = response.json()
-            """
             
-            # Instead read from local JSON file
-            with open('raw-data/twitter_history_castacrypto_20250207_002803.json', 'r') as f:
-                data = json.load(f)
+            # # Instead read from local JSON file
+            # with open('raw-data/twitter_history_castacrypto_20250207_002803.json', 'r') as f:
+            #     data = json.load(f)
             
             # Save raw response
             response_type = 'twitter_history' if history_type == 'extended' else 'twitter'
@@ -110,13 +146,17 @@ class TwitterFetcher(BaseFetcher):
             metrics = []
             if data.get('data', {}).get('daily'):
                 for daily_data in data['data']['daily']:
+                    # Parse date and make it timezone-aware
+                    timestamp = datetime.strptime(daily_data['date'], '%Y-%m-%d')
+                    timestamp = timestamp.replace(tzinfo=timezone.utc)
+                    
                     metric = {
                         'username': username,
                         'followers': daily_data.get('followers'),
                         'following': daily_data.get('following'),
                         'tweets': daily_data.get('tweets'),
                         'favorites': daily_data.get('favorites'),
-                        'timestamp': datetime.strptime(daily_data['date'], '%Y-%m-%d')
+                        'timestamp': timestamp
                     }
                     metrics.append(metric)
             
